@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>氛围音乐播放器</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>♪</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- 侧栏：氛围歌单 -->
+  <aside id="side">
+    <div class="brand">
+      <span class="logo">♪</span>
+      <div><b>氛围歌单</b><small id="bootinfo">加载中…</small></div>
+    </div>
+    <nav id="playlists"></nav>
+    <div class="side-foot">
+      <button id="btn-scan" title="重新扫描目录并分析新歌">⟳ 扫描库</button>
+      <button id="btn-settings" title="设置">⚙</button>
+    </div>
+    <div id="progress" class="hidden">
+      <div class="bar"><i id="barfill"></i></div>
+      <span id="bartext"></span>
+    </div>
+  </aside>
+
+  <!-- 主区 -->
+  <main id="main">
+    <header id="top">
+      <div class="tabs">
+        <button class="tab on" data-mode="song">搜歌名/歌手</button>
+        <button class="tab" data-mode="lyric">搜歌词</button>
+        <button class="tab" data-mode="quality">音质 / 去重</button>
+      </div>
+      <div class="search">
+        <input id="q" placeholder="搜索…" autocomplete="off">
+        <button id="q-clear" class="qclear hidden" title="清除搜索 / 筛选（Esc）">✕</button>
+        <span class="kbd">Enter</span>
+      </div>
+      <select id="order" title="排序">
+        <option value="">默认</option>
+        <option value="energy">最带感</option>
+        <option value="tempo">BPM 高→低</option>
+        <option value="title">歌名 A→Z</option>
+        <option value="duration">时长</option>
+        <option value="added">最近加入</option>
+        <option value="random">随机</option>
+      </select>
+    </header>
+
+    <div id="crumb"><h2 id="plname">全部歌曲</h2><span id="plcount"></span><p id="pldesc"></p></div>
+
+    <ul id="songs" class="list"></ul>
+
+    <!-- 音质 / 去重 -->
+    <section id="quality" class="hidden">
+      <div id="q-stats" class="q-stats"></div>
+      <div class="q-tools">
+        <div class="q-filters" id="q-filters">
+          <button data-f="upgrade" class="on">待换无损</button>
+          <button data-f="dup">重复组</button>
+          <button data-f="fake">疑似假无损</button>
+          <button data-f="lossy">全部低质</button>
+          <button data-f="all">全库评分</button>
+        </div>
+        <div class="q-actions">
+          <button id="q-refresh" title="零解码重算评分与去重">⟳ 重算</button>
+          <button id="q-sync" title="同步曲库：移除文件已被移走但仍残留的记录">⟳ 同步状态</button>
+          <button id="q-deep" title="ffmpeg 解码测高频截止，识别有损转码的假无损">🔬 深度检测</button>
+          <button id="q-export" title="导出当前清单为 CSV（含完整路径）">⬇ 导出清单</button>
+          <button id="q-select" title="在「重复组」中选中前 10 个可清理的低质副本">☑ 选中可清理</button>
+          <button id="q-trash" class="danger" title="把选中的低质副本移入回收站（可还原）" disabled>🗑 清除已选</button>
+          <button id="q-trashlog" title="查看清理记录，含原路径，便于从回收站找回">🧾 清理记录</button>
+        </div>
+      </div>
+      <div id="q-selbar" class="q-selbar hidden">
+        <span id="q-selinfo"></span>
+        <button id="q-selclear">取消选择</button>
+      </div>
+      <div id="q-progress" class="q-progress hidden">
+        <div class="bar"><i id="q-bar"></i></div><span id="q-bartext"></span>
+      </div>
+      <div id="q-list" class="q-list"></div>
+      <p class="q-note">默认只做识别、评分与标记，不会改动任何文件。需要清理时切到「重复组」勾选低质副本 →
+        「清除已选」→ 核对完整路径后确认，文件移入 <b>Windows 回收站（可还原）</b>，绝不会直接删除；
+        每组的最佳版本不允许清理。评分依据为容器/码率/采样率与频谱截止，属规则判定而非听感评测，请先导出清单复核。</p>
+    </section>
+
+    <div id="empty" class="hidden">
+      <p>还没扫到歌曲。<br>点左下角「⟳ 扫描库」，或在 ⚙ 里添加你的音乐目录。</p>
+    </div>
+  </main>
+
+  <!-- 歌词 / 详情面板 -->
+  <aside id="lyricpanel" class="hidden">
+    <div class="lp-head">
+      <div><b id="lp-title">—</b><small id="lp-artist"></small></div>
+      <button id="lp-close">✕</button>
+    </div>
+    <div class="lp-tabs">
+      <button class="on" data-t="lyric">歌词</button>
+      <button data-t="info">分析</button>
+    </div>
+    <div id="lp-lyric" class="lp-body"><div id="lrc" class="lrc"><p class="muted">这首歌还没有歌词</p></div></div>
+    <div id="lp-info" class="lp-body hidden">
+      <div id="feats"></div>
+      <div id="moodreason" class="muted"></div>
+      <label class="mini">粘贴 LRC 歌词（自动解析时间轴）</label>
+      <textarea id="lrcedit" rows="8" placeholder="[00:00.00]…&#10;没有时间轴也可以，会按歌曲时长均分"></textarea>
+      <button id="lrcsave" class="primary">保存歌词</button>
+    </div>
+  </aside>
+
+  <!-- 播放条 -->
+  <footer id="player">
+    <div class="now">
+      <img id="cover" alt="" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' fill='%2323262e'/><text x='32' y='42' font-size='26' text-anchor='middle' fill='%235b6273'>♪</text></svg>">
+      <div class="meta"><b id="ptitle">未播放</b><small id="partist"></small></div>
+    </div>
+    <div class="ctrl">
+      <div class="btns">
+        <button id="b-prev" title="上一首 (←)">⏮</button>
+        <button id="b-play" class="big" title="播放/空格">▶</button>
+        <button id="b-next" title="下一首 (→)">⏭</button>
+      </div>
+      <div class="seek">
+        <span id="t-cur">0:00</span>
+        <input id="seek" type="range" min="0" max="1000" value="0">
+        <span id="t-dur">0:00</span>
+      </div>
+    </div>
+    <div class="right">
+      <button id="b-mode" title="播放模式">🔁</button>
+      <span id="bpm" class="chip" title="节拍">—</span>
+      <span id="moodchip" class="chip"></span>
+      <button id="b-lyric" title="歌词面板">词</button>
+      <span class="vol">🔊<input id="vol" type="range" min="0" max="100" value="85"></span>
+    </div>
+  </footer>
+
+  <!-- 设置抽屉 -->
+  <div id="mask" class="hidden"></div>
+  <div id="drawer" class="hidden">
+    <h3>设置</h3>
+    <label class="mini">扫描目录（每行一个）</label>
+    <textarea id="cfg-roots" rows="5"></textarea>
+    <label class="mini">排除目录名（逗号分隔）</label>
+    <textarea id="cfg-excl" rows="2"></textarea>
+    <div class="row2">
+      <div><label class="mini">分析截取秒数</label><input id="cfg-secs" type="number" min="30" max="300"></div>
+      <div><label class="mini">分析线程数</label><input id="cfg-workers" type="number" min="1" max="8"></div>
+    </div>
+    <label class="mini">导入歌词库目录（.lrc/.json，每行一个）</label>
+    <textarea id="cfg-lyr" rows="3"></textarea>
+    <button id="import-lyr">导入歌词</button>
+    <div class="drawer-foot">
+      <button id="cfg-save" class="primary">保存</button>
+      <button id="cfg-close">关闭</button>
+    </div>
+    <p class="muted tiny">保存后点「⟳ 扫描库」生效。分析在后台进行，界面随时可用。</p>
+  </div>
+
+  <!-- 确认 / 记录弹窗 -->
+  <div id="q-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head"><b id="q-modal-title">—</b><button id="q-modal-close" title="关闭">✕</button></div>
+      <div id="q-modal-body" class="modal-body"></div>
+      <div id="q-modal-foot" class="modal-foot"></div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<audio id="audio" preload="metadata"></audio>
+<script src="app.js"></script>
+</body>
+</html>
